@@ -69,17 +69,20 @@ class Handler(BaseRequestHandler, Protocol):
 
     def open_upstream(self):
         to = self.get_to()
+        proxy = self.get_proxy()
         if not to:
             return
-        timeout = getattr(to, "timeout", None)
-        if timeout is None:
-            # Try to get from proxy dict if available
-            if hasattr(self, "proxy") and isinstance(self.proxy, dict):
-                timeout = self.proxy.get("timeout")
+        # Get timeout from proxy configuration
+        timeout = None
+        if isinstance(proxy, dict):
+            timeout = proxy.get('timeout')
+        
+        # Default timeout if none specified
         if timeout is None:
             timeout = 60
         else:
             timeout = int(timeout)
+            
         self.manager = connect(
             host=to.hostname,
             port=to.port or PORT_NETCONF_DEFAULT,
