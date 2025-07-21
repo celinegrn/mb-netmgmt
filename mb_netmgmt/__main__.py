@@ -24,7 +24,7 @@ import sys
 import tempfile
 import traceback
 from socketserver import BaseServer
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 import paramiko
 import requests
@@ -94,8 +94,8 @@ class Protocol:
         response.raise_for_status()
         return response.json()
 
-    def get_to(self):
-        self.key_filename = None
+    def get_proxy_config(self):
+        """Get the proxy configuration from the current imposter"""
         try:
             imposter_response = requests.get(
                 self.server.callback_url.replace("/_requests", "")
@@ -104,6 +104,14 @@ class Protocol:
             proxy = self.get_proxy(stubs[-1])
             if not proxy:
                 proxy = self.get_proxy(stubs[0])
+            return proxy
+        except (IndexError, AttributeError, requests.RequestException):
+            return None
+
+    def get_to(self):
+        self.key_filename = None
+        try:
+            proxy = self.get_proxy_config()
             if proxy:
                 self.save_key(proxy)
                 disable_algorithms(proxy.get("disabled_algorithms", {}))
@@ -129,6 +137,17 @@ def parse_to(url: str):
     to = urlparse(url)
     if not to.hostname:
         raise ValueError("No hostname")
+    
+    # Parse query parameters to extract timeout if provided
+    # Example: netconf://user:pass@host:830?timeout=300
+    if to.query:
+        query_params = parse_qs(to.query)
+        if 'timeout' in query_params:
+            try:
+                to.timeout = int(query_params['timeout'][0])
+            except (ValueError, IndexError):
+                pass
+    
     return to
 
 

@@ -18,6 +18,8 @@
 # along with mb-netmgmt. If not, see <https://www.gnu.org/licenses/
 
 import logging
+import time
+from datetime import datetime
 from socketserver import BaseRequestHandler
 from socketserver import ThreadingTCPServer as Server
 
@@ -52,6 +54,10 @@ class Handler(BaseRequestHandler, Protocol):
         self.session = session
         self.original_transport_read = self.session._transport_read
         self.session._transport_read = self.transport_read
+        
+        # Enhanced: Add operation tracking for NDO timeout analysis
+        self.operation_stats = {}
+        self.long_operation_threshold = 50  # seconds - NDO gateway timeout threshold
 
     def handle(self):
         self.callback_url = self.server.callback_url
@@ -69,19 +75,24 @@ class Handler(BaseRequestHandler, Protocol):
 
     def open_upstream(self):
         to = self.get_to()
-        proxy = self.get_proxy()
         if not to:
             return
-        # Get timeout from proxy configuration
-        timeout = None
-        if isinstance(proxy, dict):
-            timeout = proxy.get('timeout')
         
-        # Default timeout if none specified
+        # Get timeout from proxy configuration using existing infrastructure
+        timeout = None
+        proxy = self.get_proxy_config()
+        
+        if proxy and "timeout" in proxy:
+            try:
+                timeout = int(proxy["timeout"])
+                logging.info(f"Using timeout from proxy config: {timeout} seconds")
+            except (ValueError, TypeError):
+                logging.warning(f"Invalid timeout value in proxy config: {proxy['timeout']}")
+        
+        # Fallback to default if not found in proxy config
         if timeout is None:
-            timeout = 60
-        else:
-            timeout = int(timeout)
+            timeout = self._get_enhanced_default_timeout()
+            logging.info(f"Using enhanced default timeout: {timeout} seconds")
             
         self.manager = connect(
             host=to.hostname,
@@ -92,6 +103,55 @@ class Handler(BaseRequestHandler, Protocol):
             hostkey_verify=False,
             timeout=timeout,
         )
+
+    def _get_enhanced_default_timeout(self):
+        """
+        Enhanced timeout logic for NDO operations
+        Returns appropriate timeout based on potential operation types
+        """
+        # For NDO inventory operations, we need longer timeouts
+        # Based on transaction log analysis: Cisco inventory takes ~65 seconds
+        # Gateway timeout is ~60 seconds, so we need 480+ seconds for NETCONF
+        return 480  # Sufficient for long-running inventory operations
+    
+    def _detect_operation_type(self, request_data):
+        """
+        Detect operation type from NETCONF request to provide insights
+        """
+        if not request_data or 'rpc' not in request_data:
+            return 'unknown'
+            
+        rpc_str = str(request_data['rpc']).lower()
+        
+        if 'inventory' in rpc_str:
+            if 'cisco' in rpc_str or 'ios-xr' in rpc_str:
+                return 'cisco_inventory'
+            return 'inventory'
+        elif 'get-config' in rpc_str:
+            return 'config_get' 
+        elif 'edit-config' in rpc_str:
+            return 'config_edit'
+        elif '<get>' in rpc_str:
+            return 'get_operation'
+            
+        return 'default'
+    
+    def _log_operation_timing(self, operation_id, duration, operation_type):
+        """
+        Log operation timing with NDO gateway timeout analysis
+        """
+        if duration > self.long_operation_threshold:
+            logging.warning(f"⚠️  Long operation detected: {operation_id}")
+            logging.warning(f"   Type: {operation_type}, Duration: {duration:.1f}s")
+            logging.warning(f"   This exceeds typical NDO gateway timeout (~60s)")
+            
+            if operation_type == 'cisco_inventory':
+                logging.info("💡 Cisco inventory operations typically take 65-70s")
+                logging.info("   This will cause 504 Gateway Timeout in NDO")
+                logging.info("   Backend operation succeeds, but client gets timeout")
+                logging.info("   Solution: Use async polling in NDO client layer")
+        
+        logging.info(f"✅ NETCONF operation {operation_id} completed in {duration:.1f}s")
 
     def handle_prompt(self):
         mb_response = self.post_request({"rpc": ""})
@@ -125,7 +185,50 @@ class Handler(BaseRequestHandler, Protocol):
         return {"rpc-reply": remove_message_id(self.rpc_reply._root)}
 
     def send_upstream(self, request, request_id):
-        self.rpc_reply = self.manager.rpc(to_ele(request["rpc"]))
+        # Enhanced: Track operation timing for NDO analysis
+        operation_id = f"netconf_{request_id}_{int(time.time())}"
+        start_time = time.time()
+        
+        # Detect operation type for analysis
+        operation_type = self._detect_operation_type(request)
+        
+        logging.info(f"🔄 Starting NETCONF operation {operation_id} ({operation_type})")
+        
+        # Store operation info
+        self.operation_stats[operation_id] = {
+            'start_time': start_time,
+            'request_id': request_id,
+            'operation_type': operation_type,
+            'start_datetime': datetime.now().isoformat()
+        }
+        
+        try:
+            # Execute the original operation
+            self.rpc_reply = self.manager.rpc(to_ele(request["rpc"]))
+            
+            # Record successful completion
+            duration = time.time() - start_time
+            self.operation_stats[operation_id]['duration'] = duration
+            self.operation_stats[operation_id]['success'] = True
+            
+            # Log timing analysis
+            self._log_operation_timing(operation_id, duration, operation_type)
+            
+        except Exception as e:
+            # Record failure
+            duration = time.time() - start_time
+            self.operation_stats[operation_id]['duration'] = duration
+            self.operation_stats[operation_id]['success'] = False
+            self.operation_stats[operation_id]['error'] = str(e)
+            
+            logging.error(f"❌ NETCONF operation {operation_id} failed after {duration:.1f}s: {e}")
+            raise
+        
+        # Clean up old stats (keep last 50 operations)
+        if len(self.operation_stats) > 50:
+            oldest_key = min(self.operation_stats.keys(), 
+                           key=lambda k: self.operation_stats[k]['start_time'])
+            del self.operation_stats[oldest_key]
 
     def respond(self, response, request_id):
         reply = response.get("rpc-reply", f'<rpc-reply xmlns="{BASE_NS_1_0}"/>')
