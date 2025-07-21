@@ -55,9 +55,9 @@ class Handler(BaseRequestHandler, Protocol):
         self.original_transport_read = self.session._transport_read
         self.session._transport_read = self.transport_read
         
-        # Enhanced: Add operation tracking for NDO timeout analysis
+        # Enhanced: Add operation tracking for timeout analysis
         self.operation_stats = {}
-        self.long_operation_threshold = 50  # seconds - NDO gateway timeout threshold
+        self.long_operation_threshold = 50  # seconds - gateway timeout threshold
 
     def handle(self):
         self.callback_url = self.server.callback_url
@@ -106,12 +106,12 @@ class Handler(BaseRequestHandler, Protocol):
 
     def _get_enhanced_default_timeout(self):
         """
-        Enhanced timeout logic for NDO operations
+        Enhanced timeout logic for long-running operations
         Returns appropriate timeout based on potential operation types
         """
-        # For NDO inventory operations, we need longer timeouts
-        # Based on transaction log analysis: Cisco inventory takes ~65 seconds
-        # Gateway timeout is ~60 seconds, so we need 480+ seconds for NETCONF
+        # For long-running inventory operations, we need extended timeouts
+        # Based on analysis: Cisco inventory takes ~65 seconds
+        # Gateway timeout is typically ~60 seconds, so we need 480+ seconds for NETCONF
         return 480  # Sufficient for long-running inventory operations
     
     def _detect_operation_type(self, request_data):
@@ -138,18 +138,17 @@ class Handler(BaseRequestHandler, Protocol):
     
     def _log_operation_timing(self, operation_id, duration, operation_type):
         """
-        Log operation timing with NDO gateway timeout analysis
+        Log operation timing with gateway timeout analysis
         """
         if duration > self.long_operation_threshold:
             logging.warning(f"⚠️  Long operation detected: {operation_id}")
             logging.warning(f"   Type: {operation_type}, Duration: {duration:.1f}s")
-            logging.warning(f"   This exceeds typical NDO gateway timeout (~60s)")
+            logging.warning(f"   This exceeds typical gateway timeout (~60s)")
             
             if operation_type == 'cisco_inventory':
                 logging.info("💡 Cisco inventory operations typically take 65-70s")
-                logging.info("   This will cause 504 Gateway Timeout in NDO")
-                logging.info("   Backend operation succeeds, but client gets timeout")
-                logging.info("   Solution: Use async polling in NDO client layer")
+                logging.info("   This may cause 504 Gateway Timeout in upstream systems")
+                logging.info("   Consider using async polling or extended timeouts")
         
         logging.info(f"✅ NETCONF operation {operation_id} completed in {duration:.1f}s")
 
@@ -185,7 +184,7 @@ class Handler(BaseRequestHandler, Protocol):
         return {"rpc-reply": remove_message_id(self.rpc_reply._root)}
 
     def send_upstream(self, request, request_id):
-        # Enhanced: Track operation timing for NDO analysis
+        # Enhanced: Track operation timing for analysis
         operation_id = f"netconf_{request_id}_{int(time.time())}"
         start_time = time.time()
         
