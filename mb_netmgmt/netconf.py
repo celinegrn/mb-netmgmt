@@ -89,7 +89,7 @@ class Handler(BaseRequestHandler, Protocol):
                 timeout = int(proxy["timeout"])
                 connect_params['timeout'] = timeout
             except (ValueError, TypeError):
-                pass  # Use ncclient default if invalid timeout
+                pass
             
         self.manager = connect(**connect_params)
 
