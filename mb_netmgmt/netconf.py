@@ -72,29 +72,26 @@ class Handler(BaseRequestHandler, Protocol):
         if not to:
             return
             
-        # Get timeout from proxy configuration if available
-        timeout = None
+        # Build connection parameters
+        connect_params = {
+            'host': to.hostname,
+            'port': to.port or PORT_NETCONF_DEFAULT,
+            'username': to.username,
+            'password': to.password,
+            'key_filename': self.key_filename,
+            'hostkey_verify': False,
+        }
+        
+        # Get timeout from proxy configuration if explicitly specified
         proxy = self.get_proxy_config()
         if proxy and "timeout" in proxy:
             try:
                 timeout = int(proxy["timeout"])
+                connect_params['timeout'] = timeout
             except (ValueError, TypeError):
-                pass
-        
-        # Fallback to extended default for long-running operations (like inventory)
-        # This prevents 504 Gateway Timeout when backend takes 65+ seconds
-        if timeout is None:
-            timeout = 480  # Sufficient for long-running inventory operations
+                pass  # Use ncclient default if invalid timeout
             
-        self.manager = connect(
-            host=to.hostname,
-            port=to.port or PORT_NETCONF_DEFAULT,
-            username=to.username,
-            password=to.password,
-            key_filename=self.key_filename,
-            hostkey_verify=False,
-            timeout=timeout,
-        )
+        self.manager = connect(**connect_params)
 
     def handle_prompt(self):
         mb_response = self.post_request({"rpc": ""})
