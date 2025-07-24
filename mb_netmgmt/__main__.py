@@ -108,7 +108,13 @@ class Protocol:
     def get_to(self):
         self.key_filename = None
         try:
-            proxy = self.get_proxy_config()
+            imposter_response = requests.get(
+                self.server.callback_url.replace("/_requests", "")
+            )
+            stubs = imposter_response.json()["stubs"]
+            proxy = self.get_proxy(stubs[-1])
+            if not proxy:
+                proxy = self.get_proxy(stubs[0])
             if proxy:
                 self.save_key(proxy)
                 disable_algorithms(proxy.get("disabled_algorithms", {}))
