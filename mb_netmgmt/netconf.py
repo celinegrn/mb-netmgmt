@@ -77,7 +77,7 @@ class Handler(BaseRequestHandler, Protocol):
             'port': to.port or PORT_NETCONF_DEFAULT,
             'username': to.username,
             'password': to.password,
-            'timeout': getattr(proxy, "timeout", None),
+            'timeout': proxy.get("timeout") if proxy else None,
             'key_filename': self.key_filename,
             'hostkey_verify': False,
         })

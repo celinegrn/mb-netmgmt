@@ -308,3 +308,34 @@ def test_to_varbind_without_base64encode_response():
         "1.3.6.1.2.1.1.2.0", response=dict(val="1.3.6.1.4.1.9.1.1709", tag="OID")
     )
     assert isinstance(result.value, ASN1_OID)
+
+
+def test_netconf_timeout():
+    from mb_netmgmt.netconf import Handler
+    from unittest.mock import Mock, patch
+    with patch.object(Handler, 'handle'):
+        handler = Handler.__new__(Handler)
+        mock_server = Mock()
+        mock_server.callback_url = "http://localhost:2525/_requests"
+        handler.server = mock_server
+    with patch('mb_netmgmt.netconf.connect') as mock_connect:
+        handler.get_to = Mock(return_value=urlparse("netconf://user:pass@host:8080"))
+        handler.get_proxy_config = Mock(return_value={
+            "to": "netconf://user:pass@host:8080",
+            "timeout": 65,
+            "mode": "proxyAlways"
+        })
+        handler.key_filename = None
+        handler.open_upstream()
+        mock_connect.assert_called_once()
+        connect_params = mock_connect.call_args[0][0]
+        assert connect_params['timeout'] == 65
+    
+    with patch('mb_netmgmt.netconf.connect') as mock_connect:
+        handler.get_proxy_config = Mock(return_value={
+            "to": "netconf://user:pass@host:8080",
+            "mode": "proxyAlways"
+        })
+        handler.open_upstream()
+        connect_params = mock_connect.call_args[0][0]
+        assert connect_params.get('timeout') is None
