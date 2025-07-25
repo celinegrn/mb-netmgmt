@@ -313,29 +313,46 @@ def test_to_varbind_without_base64encode_response():
 def test_netconf_timeout():
     from mb_netmgmt.netconf import Handler
     from unittest.mock import Mock, patch
+    
+    # Test with timeout in proxy config
     with patch.object(Handler, 'handle'):
         handler = Handler.__new__(Handler)
         mock_server = Mock()
         mock_server.callback_url = "http://localhost:2525/_requests"
         handler.server = mock_server
+        
     with patch('mb_netmgmt.netconf.connect') as mock_connect:
         handler.get_to = Mock(return_value=urlparse("netconf://user:pass@host:8080"))
-        handler.get_proxy_config = Mock(return_value={
+        handler.proxy = {
             "to": "netconf://user:pass@host:8080",
             "timeout": 65,
             "mode": "proxyAlways"
-        })
+        }
         handler.key_filename = None
+        
         handler.open_upstream()
-        mock_connect.assert_called_once()
-        connect_params = mock_connect.call_args[0][0]
-        assert connect_params['timeout'] == 65
-    
+        mock_connect.assert_called_once_with(
+            host="host",
+            port=8080,
+            username="user",
+            password="pass",
+            timeout=65,
+            key_filename=None,
+            hostkey_verify=False,
+        )
     with patch('mb_netmgmt.netconf.connect') as mock_connect:
-        handler.get_proxy_config = Mock(return_value={
+        handler.proxy = {
             "to": "netconf://user:pass@host:8080",
             "mode": "proxyAlways"
-        })
+        }
+        
         handler.open_upstream()
-        connect_params = mock_connect.call_args[0][0]
-        assert connect_params.get('timeout') is None
+        mock_connect.assert_called_once_with(
+            host="host",
+            port=8080,
+            username="user",
+            password="pass",
+            timeout=None,
+            key_filename=None,
+            hostkey_verify=False,
+        )
