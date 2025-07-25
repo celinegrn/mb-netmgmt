@@ -71,16 +71,16 @@ class Handler(BaseRequestHandler, Protocol):
         to = self.get_to()
         if not to:
             return
-        proxy = self.get_proxy_config()
-        self.manager = connect({
-            'host': to.hostname,
-            'port': to.port or PORT_NETCONF_DEFAULT,
-            'username': to.username,
-            'password': to.password,
-            'timeout': proxy.get("timeout") if proxy else None,
-            'key_filename': self.key_filename,
-            'hostkey_verify': False,
-        })
+        timeout = self.proxy.get("timeout") if self.proxy else None
+        self.manager = connect(
+            host=to.hostname,
+            port=to.port or PORT_NETCONF_DEFAULT,
+            username=to.username,
+            password=to.password,
+            timeout=timeout,
+            key_filename=self.key_filename,
+            hostkey_verify=False,
+        )
 
     def handle_prompt(self):
         mb_response = self.post_request({"rpc": ""})

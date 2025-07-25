@@ -96,14 +96,7 @@ class Protocol:
 
     def get_proxy_config(self):
         """Get the proxy configuration from the current imposter"""
-        imposter_response = requests.get(
-            self.server.callback_url.replace("/_requests", "")
-        )
-        stubs = imposter_response.json()["stubs"]
-        proxy = self.get_proxy(stubs[-1])
-        if not proxy:
-            proxy = self.get_proxy(stubs[0])
-        return proxy
+        return self.proxy
 
     def get_to(self):
         self.key_filename = None
@@ -112,13 +105,13 @@ class Protocol:
                 self.server.callback_url.replace("/_requests", "")
             )
             stubs = imposter_response.json()["stubs"]
-            proxy = self.get_proxy(stubs[-1])
-            if not proxy:
-                proxy = self.get_proxy(stubs[0])
-            if proxy:
-                self.save_key(proxy)
-                disable_algorithms(proxy.get("disabled_algorithms", {}))
-                return parse_to(proxy["to"])
+            self.proxy = self.get_proxy(stubs[-1])
+            if not self.proxy:
+                self.proxy = self.get_proxy(stubs[0])
+            if self.proxy:
+                self.save_key(self.proxy)
+                disable_algorithms(self.proxy.get("disabled_algorithms", {}))
+                return parse_to(self.proxy["to"])
         except (IndexError, AttributeError):
             pass
 
