@@ -94,10 +94,6 @@ class Protocol:
         response.raise_for_status()
         return response.json()
 
-    def get_proxy_config(self):
-        """Get the proxy configuration from the current imposter"""
-        return self.proxy
-
     def get_to(self):
         self.key_filename = None
         try:
