@@ -71,13 +71,12 @@ class Handler(BaseRequestHandler, Protocol):
         to = self.get_to()
         if not to:
             return
-        timeout = self.proxy.get("timeout")
         self.manager = connect(
             host=to.hostname,
             port=to.port or PORT_NETCONF_DEFAULT,
             username=to.username,
             password=to.password,
-            timeout=timeout,
+            timeout=self.proxy.get("timeout"),
             key_filename=self.key_filename,
             hostkey_verify=False,
         )
