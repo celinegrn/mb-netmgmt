@@ -29,13 +29,21 @@ stopped = False
 
 
 class ParamikoServer(paramiko.ServerInterface):
+    def __init__(self):
+        super().__init__
+        self.username = None
+        self.password = None
+
     def get_allowed_auths(*args):
         return "password,publickey"
 
-    def check_auth_password(*args):
+    def check_auth_password(self, username, password):
+        self.username = username
+        self.password = password
         return paramiko.AUTH_SUCCESSFUL
 
-    def check_auth_publickey(*args):
+    def check_auth_publickey(self, username):
+        self.username = username
         return paramiko.AUTH_SUCCESSFUL
 
     def check_channel_request(*args):
@@ -53,6 +61,8 @@ class ParamikoServer(paramiko.ServerInterface):
             height,
             pixelwidth,
             pixelheight,
+            self.username,
+            self.password,
         )
         channel.command_prompt = b"#"
         channel.command_prompt = handle_prompt(self.handle_request)
@@ -106,7 +116,8 @@ class Handler(BaseRequestHandler, Protocol):
         return message
 
 
-def open_upstream(to, key_filename, term, width, height, pixelwidth, pixelheight):
+def open_upstream(to, key_filename, term, width, height, pixelwidth, pixelheight, 
+                  username=None, password=None):
     if not to:
         return
     client = paramiko.SSHClient()
@@ -114,8 +125,8 @@ def open_upstream(to, key_filename, term, width, height, pixelwidth, pixelheight
     client.connect(
         to.hostname,
         to.port or paramiko.config.SSH_PORT,
-        to.username,
-        to.password,
+        username,
+        password,
         key_filename=key_filename,
         transport_factory=paramiko.Transport,
         look_for_keys=False,
