@@ -30,7 +30,6 @@ stopped = False
 
 class ParamikoServer(paramiko.ServerInterface):
     def __init__(self):
-        super().__init__
         self.username = None
         self.password = None
 
