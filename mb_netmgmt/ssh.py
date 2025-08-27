@@ -131,7 +131,6 @@ def handle_prompt(handle_request):
 
 def start_server(request, to, key_filename, handle_request):
     t = paramiko.Transport(request)
-    t.add_server_key(paramiko.DSSKey.generate())
     t.add_server_key(paramiko.ECDSAKey.generate())
     t.add_server_key(paramiko.RSAKey.generate(4096))
     t.to = to
